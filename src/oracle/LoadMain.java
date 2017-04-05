@@ -13,7 +13,10 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.util.Vector;
 
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
@@ -23,6 +26,9 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
+import javax.swing.event.TableModelEvent;
+import javax.swing.event.TableModelListener;
+import javax.swing.table.TableModel;
 
 import org.apache.poi.hssf.usermodel.HSSFCell;
 import org.apache.poi.hssf.usermodel.HSSFRow;
@@ -30,7 +36,7 @@ import org.apache.poi.hssf.usermodel.HSSFSheet;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.DataFormatter;
 
-public class LoadMain extends JFrame implements ActionListener{
+public class LoadMain extends JFrame implements ActionListener, TableModelListener{
 	JPanel  p_north;
 	JButton  bt_open, bt_load, bt_del, bt_excel;
 	JTable   table;
@@ -43,6 +49,8 @@ public class LoadMain extends JFrame implements ActionListener{
 	// 윈도우 창이 열리면 이미 접속을 확보해 놓자.
 	Connection con;
 	DBManager  manager=DBManager.getInstance();
+	Vector<Vector> list;
+	Vector  columnName;
 	
 	public LoadMain() {
 		p_north = new JPanel();
@@ -87,8 +95,7 @@ public class LoadMain extends JFrame implements ActionListener{
 		setVisible(true);
 		setSize(800, 600);
 		setLocationRelativeTo(null);
-		setDefaultCloseOperation(EXIT_ON_CLOSE);
-		
+		setDefaultCloseOperation(EXIT_ON_CLOSE);		
 		
 		init();
 		
@@ -153,7 +160,17 @@ public class LoadMain extends JFrame implements ActionListener{
 					System.out.println("난 제외");
 				}				
 			}			
-			JOptionPane.showMessageDialog(this, "로드 완료");
+			JOptionPane.showMessageDialog(this, "마이그레이션 완료");
+			
+			// JTable 나오게 처리.
+			getList();
+			
+			table.setModel(new MyModel(list, columnName));
+			// 테이블 모델과 리스너와의 연결. table 이 아니라 model 에 줘야 한다.
+			table.getModel().addTableModelListener(this);
+			
+			table.updateUI();
+			
 			
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -187,6 +204,9 @@ public class LoadMain extends JFrame implements ActionListener{
 		if (result == JFileChooser.APPROVE_OPTION){
 			File file = chooser.getSelectedFile();
 			FileInputStream fis=null;
+
+			StringBuffer  sb = new StringBuffer();
+			PreparedStatement pstmt=null;
 			
 			try {
 				fis=new FileInputStream(file);
@@ -205,14 +225,34 @@ public class LoadMain extends JFrame implements ActionListener{
 					HSSFRow  row= sheet.getRow(a);
 					int columnCount = row.getLastCellNum();
 					
+					sb.append(" insert into hospital (seq, name, addr, regdate, status, dimension, type)");
+					sb.append(" values(");
+
 					for (int i=0; i<columnCount; i++){
 						HSSFCell  cell=row.getCell(i);
+						int cellType = cell.getCellType();
 						// 자료형에 국한되지 않고 모두 String 처리
 						String value=df.formatCellValue(cell);
-						System.out.print(value);
+						//System.out.print(value);
+						if (cellType==HSSFCell.CELL_TYPE_NUMERIC){
+							sb.append(value);
+						} else {
+							sb.append("'"+value+"'" );
+						}
+						if (i != (columnCount-1)){
+							sb.append(", ");
+						}
 
 					}
-					System.out.println("");
+					sb.append(") ");
+					
+					pstmt = con.prepareStatement(sb.toString());
+					int pstmtResult = pstmt.executeUpdate();
+					// 기존에 누적된 StringBuffer 데이터를 모두 지우기
+					System.out.println(sb.toString());
+					sb.delete(0, sb.length());
+					
+					//System.out.println("");
 				}
 				
 				
@@ -220,7 +260,61 @@ public class LoadMain extends JFrame implements ActionListener{
 				e.printStackTrace();
 			} catch (IOException e) {
 				e.printStackTrace();
+			} catch (SQLException e) {
+				e.printStackTrace();
 			}
+		}
+		
+	}
+	
+	// 모든 레코드 가져오기
+	public void getList(){
+		String sql = "select * from hospital order by seq asc ";
+		
+		PreparedStatement pstmt=null;
+		ResultSet rs=null;
+		try {
+			pstmt = con.prepareStatement(sql);
+			rs = pstmt.executeQuery();
+			
+			// column name 담아 놓기
+			ResultSetMetaData meta = rs.getMetaData();
+			int count = meta.getColumnCount();
+			columnName = new Vector();
+			for (int i=0; i<count;i++){
+				columnName.add(meta.getColumnName(i+1));
+			}
+			
+			list = new Vector(); // 2차원 Vector
+			
+			while (rs.next()){ // 커서 한칸 내리기
+				Vector vec = new Vector(); // 레코드 1 건 담기
+				vec.add(rs.getString("seq"));
+				vec.add(rs.getString("name"));
+				vec.add(rs.getString("addr"));
+				vec.add(rs.getString("regdate"));
+				vec.add(rs.getString("status"));
+				vec.add(rs.getString("dimension"));
+				vec.add(rs.getString("type"));
+				
+				list.add(vec);
+			}
+			
+		} catch (SQLException e) {
+			e.printStackTrace();
+		} finally {
+			if (rs!=null)
+				try {
+					rs.close();
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
+			if (pstmt!=null)
+				try {
+					pstmt.close();
+				} catch (SQLException e) {
+					e.printStackTrace();
+				}
 		}
 		
 	}
@@ -241,6 +335,31 @@ public class LoadMain extends JFrame implements ActionListener{
 		} else if (obj==bt_del){
 			delete();
 		}
+	}
+
+	// 테이블 모델의 데이터값의 변경이 발생하면, 그 찰나를 감지하는 리스너
+	public void tableChanged(TableModelEvent e) {
+		Object obj = e.getSource();
+		TableModel model = table.getModel();
+		
+		// e 를 통해 몇 row, col 을 수정했는지 system out 뿌리고, 
+		//System.out.println("source="+e.getSource());
+		if (obj == model){
+			System.out.println("나 바꿨어?");
+			System.out.println("row="+table.getSelectedRow());
+			System.out.println("column="+table.getSelectedColumn());
+			int row = table.getSelectedRow();
+			int col = table.getSelectedColumn();
+			model.getValueAt(row, col);
+			Object o=table.getValueAt(row, col);
+			System.out.println(o);
+			System.out.println("column_name="+table.getColumnName(col));
+			
+			
+		}
+		
+		// update 하기.
+		//update hospital set 컬럼명=값 where seq = 
 	}
 
 	public static void main(String[] args) {
