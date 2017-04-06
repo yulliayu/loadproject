@@ -32,7 +32,13 @@ public class MyModel extends AbstractTableModel{
 	
 	// row, col 에 위치한 cell 을 편집 가능하게 한다.
 	public boolean isCellEditable(int row, int col) {
-		return true;
+		boolean falg=false;
+		if (col==0){
+			falg=false;
+		} else {
+			falg=true;
+		}
+		return falg;
 	}
 	
 	public void setValueAt(Object value, int row, int col) {
@@ -49,6 +55,20 @@ public class MyModel extends AbstractTableModel{
 		Vector vec=list.get(row);
 		// 이창원 Vector
 		return vec.elementAt(col);
+	}
+	
+	public int findColumn(String colName) {
+		//System.out.println("find="+colName +":"+columnName.indexOf((Object)colName));
+		int col = -1;
+		for (int i=0; i<columnName.size(); i++){
+			String name = (String)columnName.elementAt(i);
+			//System.out.println("name = "+name);
+			if (name.equals(colName.toUpperCase())){
+				col=i;
+				break;
+			}			
+		}
+		return col;
 	}
 
 }
