@@ -63,6 +63,7 @@ public class LoadMain extends JFrame implements ActionListener, TableModelListen
 	// 엑셀파일에 의해 생성된 쿼리 문을 쓰레드가 사용할 수 있는 상태로 저장해 놓자.
 	StringBuffer  insertSql = new StringBuffer();
 	String seq;
+	MyModel myModel;
 	
 	public LoadMain() {
 		p_north = new JPanel();
@@ -196,8 +197,8 @@ public class LoadMain extends JFrame implements ActionListener, TableModelListen
 			
 			// JTable 나오게 처리.
 			getList();
-			
-			table.setModel(new MyModel(list, columnName));
+			myModel = new MyModel(list, columnName);
+			table.setModel(myModel);
 			// 테이블 모델과 리스너와의 연결. table 이 아니라 model 에 줘야 한다.
 			table.getModel().addTableModelListener(this);
 			
@@ -395,7 +396,9 @@ public class LoadMain extends JFrame implements ActionListener, TableModelListen
 				if (ans !=0){
 					System.out.println("갱신 전 : "+table.getRowCount() + ", row = "+table.getSelectedRow());
 					JOptionPane.showMessageDialog(this, "삭제완료");
-					//getList();
+					getList();
+					//방금 완성된 list 를 MyModel 에 대입
+					myModel.list = list;
 					table.updateUI();
 					System.out.println("갱신 : "+table.getRowCount());
 				}
